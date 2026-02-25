@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import API from "../services/api";
+import axios from "axios";
 
 export default function RegisterOrganization() {
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ export default function RegisterOrganization() {
     }
 
     try {
-      await API.post("/org/register", form);
+      await axios.post("https://zenith-hr.onrender.com/api/org/register", form);
       navigate("/admin-login", { 
         state: { message: "Registration successful! Please login." } 
       });

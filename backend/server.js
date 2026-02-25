@@ -45,7 +45,6 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/employee-auth", require("./routes/employeeAuthRoutes"));
 app.use("/api/debug", require("./routes/debugRoutes"));
 app.use("/api/org", orgRoutes);
-app.use("/api/timelogs", require("./routes/timeRoutes"));
 
 // Default Route
 app.get("/", (req, res) => {

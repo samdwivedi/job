@@ -17,6 +17,8 @@ router.post("/admin/login", loginAdmin);
 router.post("/login", login);
 router.get("/profile", protect, getProfile);
 
+router.get("/profile", protect, getProfile);
+
 router.post("/employee/login", loginEmployee);
 
 module.exports = router;

@@ -49,11 +49,6 @@ const employeeSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    
-    balance: {
-      type: Number,
-      default: 0,
-    },
   },
   { timestamps: true }
 );

@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { ethers } from "ethers";
 import API from "../services/api";
 import { useNavigate } from "react-router-dom";
 
@@ -21,24 +20,13 @@ function Tasks() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const [profile, setProfile] = useState(null);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchTasks();
-    fetchProfile();
   }, []);
-
-  const fetchProfile = async () => {
-    try {
-      const res = await API.get('/auth/profile');
-      setProfile(res.data);
-    } catch (err) {
-      console.error('Failed to fetch profile', err);
-    }
-  };
 
   // Toast notification helper
   const showToast = (message, type = 'success') => {
@@ -622,45 +610,6 @@ function Tasks() {
               >
                 Close
               </button>
-              {/* Verify button for HR */}
-              {profile && ['HR','ADMIN'].includes((profile.role || '').toString().toUpperCase()) && selectedTask && selectedTask.status === 'Completed' && !selectedTask.verified && (
-                <button
-                  onClick={async () => {
-                    try {
-                      if (!window.ethereum) return alert('Please install MetaMask');
-                      // connect
-                      const provider = new ethers.BrowserProvider(window.ethereum);
-                      const signer = await provider.getSigner();
-                      const hrAddress = await signer.getAddress();
-
-                      const to = selectedTask.assignedTo?.walletAddress;
-                      if (!to) return alert('Employee wallet address not available');
-
-                      const amount = String(selectedTask.coins || 0);
-                      if (!amount || Number(amount) <= 0) return alert('Task has no coin allocation');
-
-                      const tx = await signer.sendTransaction({
-                        to,
-                        value: ethers.parseEther(amount)
-                      });
-                      await tx.wait();
-
-                      // Inform backend of verification and txHash
-                      await API.put(`/tasks/${selectedTask._id}/verify`, { txHash: tx.hash });
-                      showToast('Task verified and tokens transferred');
-                      fetchTasks();
-                      setShowDetailsModal(false);
-                    } catch (err) {
-                      console.error('Verification error', err);
-                      showToast(err.message || 'Verification failed', 'error');
-                    }
-                  }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg 
-                           transition-colors text-sm font-medium flex items-center space-x-2"
-                >
-                  Verify & Pay
-                </button>
-              )}
               <button
                 onClick={() => {
                   setShowDetailsModal(false);

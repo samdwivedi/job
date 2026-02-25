@@ -110,9 +110,8 @@ const createTask = async (req, res) => {
   try {
     const { title, description, assignedTo, deadline } = req.body;
 
-    // Allow both ADMIN and HR to assign tasks
-    if (req.role !== "ADMIN" && req.role !== "HR") {
-      return res.status(403).json({ error: "Only admin or HR can assign tasks" });
+    if (req.role !== "ADMIN") {
+      return res.status(403).json({ error: "Only admin can assign tasks" });
     }
 
     if (!assignedTo) {
@@ -322,129 +321,12 @@ const deleteTask = async (req, res) => {
   res.json({ message: "Task deleted successfully" });
 };
 
-/* ======================================================
-   5b️⃣ Employee completes task with required attachments
-====================================================== */
-const completeTask = async (req, res) => {
-  try {
-    const taskId = req.params.id;
-
-    if (!mongoose.Types.ObjectId.isValid(taskId)) {
-      return res.status(400).json({ error: "Invalid task id" });
-    }
-
-    const task = await Task.findById(taskId);
-    if (!task) return res.status(404).json({ error: "Task not found" });
-
-    // Only assigned employee can complete
-    if (req.role !== "EMPLOYEE" || task.assignedTo.toString() !== req.user.id) {
-      return res.status(403).json({ error: "Only the assigned employee can complete this task" });
-    }
-
-    // Require at least one file upload
-    const files = req.files || [];
-    if (files.length === 0) {
-      return res.status(400).json({ error: "You must upload a supporting document to mark task as completed" });
-    }
-
-    // Save attachments
-    task.attachments = files.map((f) => ({ path: f.path, originalname: f.originalname }));
-    task.status = "Completed";
-    task.completedAt = new Date();
-
-    await task.save();
-
-    return res.json(task);
-  } catch (err) {
-    console.error("completeTask error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-/* ======================================================
-   6b️⃣ HR verifies completed task and (optionally) records txHash
-   Expect frontend to send the on-chain txHash after MetaMask transfer
-====================================================== */
-const verifyTask = async (req, res) => {
-  try {
-    const taskId = req.params.id;
-    const { txHash } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(taskId)) {
-      return res.status(400).json({ error: "Invalid task id" });
-    }
-
-    const task = await Task.findById(taskId);
-    if (!task) return res.status(404).json({ error: "Task not found" });
-
-    if (task.organizationId.toString() !== req.organizationId.toString()) {
-      return res.status(403).json({ error: "Not allowed" });
-    }
-
-    if (task.status !== "Completed") {
-      return res.status(400).json({ error: "Task is not completed yet" });
-    }
-
-    if (task.verified) {
-      return res.status(400).json({ error: "Task already verified" });
-    }
-
-    // Only HR or ADMIN can verify
-    if (req.role !== "HR" && req.role !== "ADMIN") {
-      return res.status(403).json({ error: "Verifier access only (HR/Admin)" });
-    }
-
-    // Attempt to find HR employee record (prefer the verifier themselves)
-    let hr = null;
-    try {
-      hr = await Employee.findById(req.user.id);
-      if (!hr || hr.organizationId.toString() !== req.organizationId.toString() || (hr.role || '').toLowerCase() !== 'hr') {
-        // fallback: find any HR in the org
-        hr = await Employee.findOne({ organizationId: req.organizationId, role: { $regex: /^hr$/i } });
-      }
-    } catch (e) {
-      hr = await Employee.findOne({ organizationId: req.organizationId, role: { $regex: /^hr$/i } });
-    }
-
-    const employee = await Employee.findById(task.assignedTo);
-    if (!employee) return res.status(400).json({ error: "Assigned employee not found" });
-
-    const amount = Number(task.coins) || 0;
-
-    // If we have an HR record, ensure balance and transfer internally
-    if (hr) {
-      if ((hr.balance || 0) < amount) {
-        return res.status(400).json({ error: "HR has insufficient balance (internal balance)" });
-      }
-
-      hr.balance -= amount;
-      employee.balance = (employee.balance || 0) + amount;
-
-      await hr.save();
-      await employee.save();
-    }
-
-    task.verified = true;
-    task.verifiedBy = req.user.id;
-    task.verifiedAt = new Date();
-    task.txHash = txHash || null;
-    await task.save();
-
-    return res.json({ message: "Task verified", task });
-  } catch (err) {
-    console.error("verifyTask error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-};
-
 module.exports = {
   createTask,
   getTasks,
   getTaskById,
   getMyTasks,
   updateTaskStatus,
-  completeTask,
-  verifyTask,
   getProductivity,
   deleteTask,
 };

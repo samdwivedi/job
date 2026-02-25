@@ -24,9 +24,39 @@ const taskSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Number of coins assigned for completing the task
+    coins: {
+      type: Number,
+      default: 0,
+    },
+
+    // Submission information (employee upload)
+    submissionUrl: {
+      type: String,
+      default: "",
+    },
+
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Verification info (set by HR/admin)
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // Task lifecycle status
     status: {
       type: String,
-      enum: ["Assigned", "In Progress", "Completed"],
+      enum: ["Assigned", "Submitted", "Verified"],
       default: "Assigned",
     },
 

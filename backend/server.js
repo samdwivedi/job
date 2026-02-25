@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const orgRoutes = require("./routes/orgRoutes");
+const path = require("path");
 
 const connectDB = require("./config/db");
 
@@ -32,6 +33,9 @@ app.use(
 );
 
 app.use(express.json()); // for JSON body parsing
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect Database
 connectDB();

@@ -102,13 +102,15 @@
 const Task = require("../models/Task");
 const Employee = require("../models/Employee");
 const mongoose = require("mongoose");
+const path = require("path");
+const fs = require("fs");
 
 /* ======================================================
    1️⃣ Admin assigns task
 ====================================================== */
 const createTask = async (req, res) => {
   try {
-    const { title, description, assignedTo, deadline } = req.body;
+    const { title, description, assignedTo, deadline, coins } = req.body;
 
     if (req.role !== "ADMIN") {
       return res.status(403).json({ error: "Only admin can assign tasks" });
@@ -140,6 +142,7 @@ const createTask = async (req, res) => {
       assignedTo,
       deadline,
       status: "Assigned",
+      coins: Number(coins) || 0,
     });
 
     return res.status(201).json(task);
@@ -241,8 +244,10 @@ const updateTaskStatus = async (req, res) => {
     }
 
     const allowed = ["Assigned", "In Progress", "Completed"];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ error: "Invalid status value", allowed });
+    // allow newer lifecycle values too
+    const extendedAllowed = [...allowed, "Submitted", "Verified"];
+    if (!extendedAllowed.includes(status)) {
+      return res.status(400).json({ error: "Invalid status value", allowed: extendedAllowed });
     }
 
     task.status = status;
@@ -321,12 +326,101 @@ const deleteTask = async (req, res) => {
   res.json({ message: "Task deleted successfully" });
 };
 
+const submitTask = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid task id" });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    // Only assigned employee can submit
+    if (req.role !== "EMPLOYEE" || task.assignedTo.toString() !== req.user.id) {
+      return res.status(403).json({ error: "Not allowed to submit this task" });
+    }
+
+    // Expect file middleware to populate req.file
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Only accept pdf
+    if (req.file.mimetype !== "application/pdf") {
+      // remove uploaded file
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
+      return res.status(400).json({ error: "Only PDF uploads are allowed" });
+    }
+
+    // Save submission url (serve via /uploads)
+    const relPath = `/uploads/${path.basename(req.file.path)}`;
+
+    task.submissionUrl = relPath;
+    task.submittedAt = new Date();
+    task.status = "Submitted";
+
+    await task.save();
+
+    return res.json({ message: "Submitted successfully", task });
+  } catch (err) {
+    console.error("submitTask error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/* ======================================================
+   9️⃣ Admin verifies submitted task and awards coins
+====================================================== */
+const verifyTask = async (req, res) => {
+  try {
+    if (req.role !== "ADMIN") {
+      return res.status(403).json({ error: "Admin access only" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid task id" });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    if (task.status !== "Submitted") {
+      return res.status(400).json({ error: "Only submitted tasks can be verified" });
+    }
+
+    // Mark verified
+    task.status = "Verified";
+    task.verifiedAt = new Date();
+    task.verifiedBy = req.user.id;
+
+    // Award coins to employee
+    const employee = await Employee.findById(task.assignedTo);
+    if (employee) {
+      employee.coins = (employee.coins || 0) + (task.coins || 0);
+      await employee.save();
+    }
+
+    await task.save();
+
+    return res.json({ message: "Task verified", task });
+  } catch (err) {
+    console.error("verifyTask error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   createTask,
   getTasks,
   getTaskById,
   getMyTasks,
   updateTaskStatus,
+  submitTask,
+  verifyTask,
   getProductivity,
   deleteTask,
 };
+
+/* ======================================================
+   8️⃣ Employee submits their task (upload PDF)
+====================================================== */

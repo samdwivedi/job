@@ -15,6 +15,7 @@ function AssignTask() {
     assignedTo: "",
     priority: "medium",
     dueDate: "",
+    coins: 0,
   });
 
   useEffect(() => {
@@ -47,6 +48,10 @@ function AssignTask() {
 
     if (!formData.dueDate) {
       newErrors.dueDate = "Due date is required";
+    }
+
+    if (formData.coins === undefined || isNaN(Number(formData.coins)) || Number(formData.coins) < 0) {
+      newErrors.coins = "Coins must be a non-negative number";
     }
 
     return newErrors;
@@ -376,6 +381,20 @@ function AssignTask() {
               </div>
             </div>
           </form>
+        </div>
+
+        {/* Coins Field */}
+        <div className="mt-4 max-w-3xl mx-auto">
+          <label className="block text-sm font-medium text-slate-700">Coins rewarded</label>
+          <input
+            type="number"
+            name="coins"
+            min={0}
+            value={formData.coins}
+            onChange={handleChange}
+            className="w-40 px-3 py-2 mt-2 bg-slate-50 border border-slate-200 rounded-xl"
+          />
+          {errors.coins && <p className="text-sm text-rose-500 mt-1.5">{errors.coins}</p>}
         </div>
 
         {/* Helper Text */}

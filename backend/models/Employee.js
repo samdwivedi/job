@@ -45,6 +45,12 @@ const employeeSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Accumulated coins awarded to employee
+    coins: {
+      type: Number,
+      default: 0,
+    },
+
     isActive: {
       type: Boolean,
       default: true,

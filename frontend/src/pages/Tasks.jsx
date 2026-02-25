@@ -23,6 +23,22 @@ function Tasks() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   
   const navigate = useNavigate();
+  const token = localStorage.getItem("token");
+
+  const decodeJwt = (t) => {
+    try {
+      const parts = t.split('.');
+      if (parts.length < 2) return null;
+      let payload = parts[1];
+      payload = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = payload.length % 4;
+      if (pad) payload += '='.repeat(4 - pad);
+      const decoded = atob(payload);
+      return JSON.parse(decoded);
+    } catch (err) {
+      return null;
+    }
+  };
 
   useEffect(() => {
     fetchTasks();
@@ -583,6 +599,59 @@ function Tasks() {
                 </div>
               )}
 
+              {/* Submission area for employee */}
+              {selectedTask.status === 'Assigned' && token && (() => {
+                const decoded = decodeJwt(token);
+                if (decoded?.role === 'employee' && decoded?.id === selectedTask.assignedTo?._id) {
+                  return (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Submit Work (PDF)</label>
+                      <div className="mt-2 flex items-center space-x-3">
+                        <input id="submissionFile" type="file" accept="application/pdf" className="text-sm" />
+                        <button
+                          onClick={async () => {
+                            const input = document.getElementById('submissionFile');
+                            if (!input || !input.files || input.files.length === 0) {
+                              showToast('Please select a PDF to upload', 'error');
+                              return;
+                            }
+                            const file = input.files[0];
+                            const fd = new FormData();
+                            fd.append('file', file);
+                            try {
+                              showToast('Uploading...', 'success');
+                              const res = await API.post(`/tasks/${selectedTask._id}/submit`, fd, {
+                                headers: { 'Content-Type': 'multipart/form-data' }
+                              });
+                              setSelectedTask(res.data.task);
+                              setTasks(tasks.map(t => t._id === res.data.task._id ? res.data.task : t));
+                              showToast('Submitted successfully');
+                            } catch (err) {
+                              console.error('Submit error', err);
+                              showToast(err.response?.data?.error || 'Submit failed', 'error');
+                            }
+                          }}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm"
+                        >
+                          Upload & Submit
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Show submission link if exists */}
+              {selectedTask.submissionUrl && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Submission</label>
+                  <p className="mt-2 text-sm">
+                    <a href={selectedTask.submissionUrl} target="_blank" rel="noreferrer" className="text-indigo-600 underline">Open submitted PDF</a>
+                  </p>
+                </div>
+              )}
+
               {/* Comments/Notes */}
               {selectedTask.notes && selectedTask.notes.length > 0 && (
                 <div>
@@ -610,6 +679,34 @@ function Tasks() {
               >
                 Close
               </button>
+              {/* Admin Verify Button for submitted tasks */}
+              {token && (() => {
+                const decoded = decodeJwt(token);
+                if (decoded?.role === 'admin' && selectedTask.status === 'Submitted') {
+                  return (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await API.patch(`/tasks/${selectedTask._id}/verify`);
+                          // Refresh task locally
+                          const updated = { ...selectedTask, status: 'Verified' };
+                          setSelectedTask(updated);
+                          setTasks(tasks.map(t => t._id === updated._id ? updated : t));
+                          showToast('Task verified and coins awarded');
+                        } catch (err) {
+                          console.error('Verify error', err);
+                          showToast(err.response?.data?.error || 'Verify failed', 'error');
+                        }
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg 
+                               transition-colors text-sm font-medium flex items-center space-x-2"
+                    >
+                      <span>Verify</span>
+                    </button>
+                  );
+                }
+                return null;
+              })()}
               <button
                 onClick={() => {
                   setShowDetailsModal(false);

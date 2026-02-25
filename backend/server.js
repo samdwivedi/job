@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import User from "./models/User.js";
 import Task from "./models/Task.js";
@@ -16,11 +17,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+app.use("/uploads", express.static(uploadsDir));
 
 // Multer setup
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, "uploads")),
+  destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
 });
 const upload = multer({ storage });
@@ -32,35 +40,6 @@ mongoose.connect(MONGO_URI)
   .catch(err => console.error("Mongo error", err));
 
 // ---------- Routes ----------
-
-// Simple seed route to create demo users
-app.post("/api/seed", async (req, res) => {
-  try {
-    await User.deleteMany({});
-    await Task.deleteMany({});
-    await Transaction.deleteMany({});
-
-    const hr = await User.create({ name: "HR Alice", role: "hr", coins: 1000 });
-    const admin = await User.create({ name: "Admin Bob", role: "admin", coins: 2000 });
-    const emp = await User.create({ name: "Employee Charlie", role: "employee", coins: 0 });
-    const verifier = await User.create({ name: "Verifier Dana", role: "verifier", coins: 0 });
-
-    // sample task
-    const t1 = await Task.create({
-      title: "Submit ID doc",
-      assignedBy: hr._id,
-      assignedTo: emp._id,
-      verifier: verifier._id,
-      coins: 100,
-      status: "assigned"
-    });
-
-    res.json({ hr, admin, emp, verifier, task: t1 });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // List users
 app.get("/api/users", async (req,res)=>{
@@ -115,11 +94,23 @@ app.get("/api/tasks/user/:userId", async (req,res)=>{
 app.post("/api/tasks/:taskId/upload", upload.single("file"), async (req,res)=>{
   try {
     const { taskId } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided. Please select a file to upload." });
+    }
+
     const task = await Task.findById(taskId);
     if(!task) return res.status(404).json({ error: "Task not found" });
 
     const f = req.file;
-    task.file = { originalName: f.originalname, path: `/uploads/${path.basename(f.path)}`, mimeType: f.mimetype };
+    const filePath = `/uploads/${path.basename(f.path)}`;
+    
+    // Verify file was actually written to disk
+    if (!fs.existsSync(f.path)) {
+      return res.status(500).json({ error: "File upload failed - file not saved to server" });
+    }
+    
+    task.file = { originalName: f.originalname, path: filePath, mimeType: f.mimetype };
     task.status = "uploaded";
     await task.save();
     res.json(task);
@@ -135,7 +126,14 @@ app.post("/api/tasks/:taskId/complete", async (req,res)=>{
     const { taskId } = req.params;
     const task = await Task.findById(taskId);
     if(!task) return res.status(404).json({ error: "Task not found" });
-    if(!task.file || !task.file.path) return res.status(400).json({ error: "No file uploaded yet" });
+    
+    if(task.status !== "uploaded") {
+      return res.status(400).json({ error: "File must be uploaded before marking as complete" });
+    }
+    
+    if(!task.file || !task.file.path) {
+      return res.status(400).json({ error: "No file associated with this task" });
+    }
 
     task.status = "completed";
     await task.save();

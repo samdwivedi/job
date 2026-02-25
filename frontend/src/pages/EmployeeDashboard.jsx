@@ -96,9 +96,7 @@ const handleCompleteSubmit = async () => {
     const formData = new FormData();
     filesToUpload.forEach((f) => formData.append("files", f));
 
-    const res = await API.put(`/tasks/${completingTaskId}/complete`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const res = await API.put(`/tasks/${completingTaskId}/complete`, formData);
 
     // After successful server-side completion, write a minimal on-chain record
     if (!wallet) {

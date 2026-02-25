@@ -15,6 +15,7 @@ function AssignTask() {
     assignedTo: "",
     priority: "medium",
     dueDate: "",
+    coins: 0,
   });
 
   useEffect(() => {
@@ -47,6 +48,10 @@ function AssignTask() {
 
     if (!formData.dueDate) {
       newErrors.dueDate = "Due date is required";
+    }
+
+    if (formData.coins === undefined || formData.coins === null || formData.coins === '') {
+      newErrors.coins = "Please specify coin amount to allocate for this task (e.g. 0.01)";
     }
 
     return newErrors;
@@ -147,6 +152,27 @@ function AssignTask() {
               </div>
             </div>
           </div>
+
+              {/* Coins allotment */}
+              <div className="space-y-1.5 mt-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Coins (ETH) to allocate
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  name="coins"
+                  value={formData.coins}
+                  onChange={handleChange}
+                  placeholder="e.g., 0.01"
+                  className={`w-full px-4 py-3 bg-slate-50 border rounded-xl focus:outline-none 
+                           focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 
+                           transition-all text-slate-700 placeholder:text-slate-400`}
+                />
+                {errors.coins && (
+                  <p className="text-sm text-rose-500 mt-1.5">{errors.coins}</p>
+                )}
+              </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-8">

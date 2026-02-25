@@ -7,6 +7,9 @@ function EmployeeDashboard() {
   const [productivity, setProductivity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatingTaskId, setUpdatingTaskId] = useState(null);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [filesToUpload, setFilesToUpload] = useState([]);
+  const [completingTaskId, setCompletingTaskId] = useState(null);
   const [greeting, setGreeting] = useState("");
   const [wallet, setWallet] = useState(null);
 
@@ -23,13 +26,7 @@ function EmployeeDashboard() {
   setWallet(accounts[0]);
 };
 
-  const token = localStorage.getItem("employeeToken");
-
-  const config = {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
+  // Use the shared API client which attaches the token from localStorage
 
   useEffect(() => {
     setGreeting(getGreeting());
@@ -55,44 +52,72 @@ function EmployeeDashboard() {
   };
 
   const fetchTasks = async () => {
-    const res = await API.get("/tasks/my-tasks", config);
+    const res = await API.get("/tasks/my-tasks");
     setTasks(res.data);
   };
 
   const fetchProductivity = async () => {
-    const res = await API.get("/tasks/productivity", config);
+    const res = await API.get("/tasks/productivity");
     setProductivity(res.data);
   };
 
 const updateStatus = async (taskId, newStatus) => {
   try {
-    setUpdatingTaskId(taskId);
-
-    // 1️⃣ Update MongoDB first
-    await API.put(
-      `/tasks/${taskId}/status`,
-      { status: newStatus },
-      config
-    );
-
-    // 2️⃣ If status is Completed → log on blockchain
+    // If employee is trying to mark Completed -> require upload modal
     if (newStatus === "Completed") {
-      if (!wallet) {
-        alert("Please connect your wallet first");
-        return;
-      }
-
-      const contract = await getContract();
-      const tx = await contract.logTask(taskId);
-      await tx.wait();
-
-      console.log("Blockchain TX:", tx.hash);
-      alert("Task recorded on blockchain!");
+      setCompletingTaskId(taskId);
+      setShowCompleteModal(true);
+      return;
     }
 
+    setUpdatingTaskId(taskId);
+    await API.put(`/tasks/${taskId}/status`, { status: newStatus });
     await fetchDashboardData();
   } catch (error) {
     console.error("Error updating task:", error);
+  } finally {
+    setUpdatingTaskId(null);
+  }
+};
+
+const handleFilesChange = (e) => {
+  setFilesToUpload(Array.from(e.target.files));
+};
+
+const handleCompleteSubmit = async () => {
+  if (!completingTaskId) return;
+  if (filesToUpload.length === 0) {
+    alert("Please attach at least one document before completing the task.");
+    return;
+  }
+
+  try {
+    setUpdatingTaskId(completingTaskId);
+    const formData = new FormData();
+    filesToUpload.forEach((f) => formData.append("files", f));
+
+    const res = await API.put(`/tasks/${completingTaskId}/complete`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    // After successful server-side completion, write a minimal on-chain record
+    if (!wallet) {
+      alert("Please connect your wallet to record task on-chain");
+    } else {
+      const contract = await getContract();
+      const tx = await contract.logTask(completingTaskId);
+      await tx.wait();
+      console.log("Blockchain TX:", tx.hash);
+    }
+
+    setShowCompleteModal(false);
+    setFilesToUpload([]);
+    setCompletingTaskId(null);
+    await fetchDashboardData();
+    alert("Task completed and recorded.");
+  } catch (err) {
+    console.error("Error completing task:", err);
+    alert(err.response?.data?.error || "Failed to complete task");
   } finally {
     setUpdatingTaskId(null);
   }
@@ -173,6 +198,25 @@ const updateStatus = async (taskId, newStatus) => {
                 </p>
             )}
         </div>
+
+            {/* Complete Task Modal */}
+            {showCompleteModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl max-w-md w-full">
+                  <div className="p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload documents to complete task</h3>
+                    <p className="text-sm text-gray-600 mb-4">Please attach at least one supporting document before marking the task as completed.</p>
+
+                    <input type="file" multiple onChange={handleFilesChange} className="mb-4" />
+
+                    <div className="flex justify-end space-x-3">
+                      <button onClick={() => { setShowCompleteModal(false); setFilesToUpload([]); setCompletingTaskId(null); }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700">Cancel</button>
+                      <button onClick={handleCompleteSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded-lg">Upload & Complete</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
